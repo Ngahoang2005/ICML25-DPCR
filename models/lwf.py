@@ -484,7 +484,8 @@ class LwF(BaseLearner):
         if self.al_classifier == None:
             self.al_classifier = ALClassifier(512, self._total_classes, 0, self._device,args=self.args).to(self._device)
             for name, param in self.al_classifier.named_parameters():
-                param.requires_grad = False
+                #param.requires_grad = False
+                do = 0
         else:
             self.al_classifier.augment_class(data_manager.get_task_size(self._cur_task))
         logging.info(
@@ -588,7 +589,7 @@ class LwF(BaseLearner):
         if self._cur_task == 0:
             
             if need_train:
-                optimizer = optim.SGD(self._network.parameters(), momentum=0.9, lr=init_lr, weight_decay=init_weight_decay)
+                optimizer = optim.SGD(list(self._network.parameters()) + list(self.al_classifier.parameters()), momentum=0.9, lr=init_lr, weight_decay=init_weight_decay)
                 scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=init_milestones, gamma=init_lr_decay)
                 self._init_train(train_loader, test_loader, optimizer, scheduler)
 
@@ -618,7 +619,7 @@ class LwF(BaseLearner):
         else:
            
             if need_train:
-                optimizer = optim.SGD(self._network.parameters(), lr=lrate, momentum=0.9, weight_decay=weight_decay)
+                optimizer = optim.SGD(list(self._network.parameters()) + list(self.al_classifier.parameters()), lr=lrate, momentum=0.9, weight_decay=weight_decay)
                 scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=milestones, gamma=lrate_decay)
                 self._update_representation(train_loader, test_loader, optimizer, scheduler)
             #self._build_protos()                
