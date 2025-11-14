@@ -115,26 +115,30 @@ class BaseLearner(object):
         return np.around(tensor2numpy(correct) * 100 / total, decimals=2)
 
     def _eval_cnn(self, loader):
+        """
+        Evaluate using the MAIN classifier of self._network,
+        instead of ALClassifier. This uses the standard logits
+        produced by the incrementally-trained model.
+        """
         self._network.eval()
         y_pred, y_true = [], []
 
         for _, (_, inputs, targets) in enumerate(loader):
             inputs = inputs.to(self._device)
+            targets = targets.cpu().numpy()
+
             with torch.no_grad():
-                outputs = self._network(inputs)["features"]
-                _, outputs = self.al_classifier(outputs)
-            predicts = torch.topk(
-                outputs, k=self.topk, dim=1, largest=True, sorted=True
-            )[
-                1
-            ]  # [bs, topk]
+                # Use MAIN classifier: logits from self._network
+                outputs = self._network(inputs)["logits"]      # [bs, num_classes]
+            
+            # Top-k predictions
+            predicts = torch.topk(outputs, k=self.topk, dim=1, largest=True, sorted=True)[1]
             y_pred.append(predicts.cpu().numpy())
-            y_true.append(targets.cpu().numpy())
+            y_true.append(targets)
 
+        return np.concatenate(y_pred), np.concatenate(y_true)   # shapes: [N, topk], [N]
 
-        return np.concatenate(y_pred), np.concatenate(y_true)  # [N, topk]
         
-    
     def _extract_vectors_adv(self, loader, old=False):
         self._network.eval()
         if old:
