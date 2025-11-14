@@ -23,7 +23,7 @@ init_lr_decay = 0.1
 init_weight_decay = 0.0005
 
 # cifar100
-epochs = 1
+epochs = 5
 lrate = 0.05
 milestones = [45, 90]
 lrate_decay = 0.1
@@ -624,62 +624,7 @@ class LwF(BaseLearner):
             #self._build_protos()                
                     
                     
-            if self.args["DPCR"]:
-                print('Using DPCR')
-                self._network.eval()
-                self.projector = Drift_Estimator(512,False,self.args)
-                self.projector.to(self._device)
-                for name, param in self.projector.named_parameters():
-                    param.requires_grad = False
-                self.projector.eval()
-                cov_pwdr = self.projector.rg_tssp * torch.eye(self.projector.fe_size).to(self._device)
-                crs_cor_pwdr = torch.zeros(self.projector.fe_size, self.projector.fe_size).to(self._device)
-
-                crs_cor_new = torch.zeros(self.al_classifier.fc.weight.size(1), self._total_classes).to(self._device)
-                cov_new = torch.zeros(self.projector.fe_size, self.projector.fe_size).to(self._device)
-                with torch.no_grad():
-                    for i, (_, inputs, targets) in enumerate(train_loader):
-                        inputs, targets = inputs.to(self._device), targets.to(self._device)
-                        feats_old = self._old_network(inputs)["features"]
-                        # print(feats_old)
-                        feats_new = self._network(inputs)["features"]
-                        cov_pwdr += torch.t(feats_old) @ feats_old
-                        cov_new += torch.t(feats_new) @ feats_new
-                        crs_cor_pwdr += torch.t(feats_old) @ (feats_new)
-                        label_onehot = F.one_hot(targets, self._total_classes).float()
-                        crs_cor_new += torch.t(feats_new) @ (label_onehot)
-                self.projector.cov = cov_pwdr
-                self.projector.Q = crs_cor_pwdr
-                R_inv = torch.inverse(cov_pwdr.cpu()).to(self._device)
-                Delta = R_inv @ crs_cor_pwdr
-                self.projector.fc.weight = torch.nn.parameter.Parameter(torch.t(Delta.float()))
-
-                cov_prime = torch.zeros(self.al_classifier.fe_size, self.al_classifier.fe_size).to(self._device)
-                Q_prime = torch.zeros(self.al_classifier.fe_size, self.al_classifier.num_classes).to(self._device)
-
-                for class_idx in range(0, self._known_classes):
-                    W = self.projector.get_weight() @ self._projectors[class_idx]
-                    cov_idx = self._covs[class_idx]
-                    cov_prime_idx = torch.t(W) @ cov_idx @ W
-                    label = class_idx
-                    label_onehot = F.one_hot(torch.tensor(label).long().to(self._device), self._total_classes).float()
-                    cor_prime_idx = self.num_per_class * (torch.t(W) @ torch.t(
-                        self._protos[class_idx].view(1, self.al_classifier.fe_size))) @ label_onehot.view(1, self._total_classes)
-                    cov_prime += cov_prime_idx
-                    Q_prime += cor_prime_idx
-                    self._covs[class_idx] = cov_prime_idx
-                    self._projectors[class_idx] = self.get_projector_svd(cov_prime_idx)
-                    self._protos[class_idx] = self._protos[class_idx] @ W
-
-                R_prime = cov_prime + self.al_classifier.gamma * torch.eye(self.al_classifier.fe_size).to(self._device)
-                self.al_classifier.cov = cov_prime + cov_new
-                self.al_classifier.Q = Q_prime + crs_cor_new
-                self.al_classifier.R = R_prime+ cov_new
-                R_inv = torch.inverse(self.al_classifier.R.cpu()).to(self._device)
-                Delta = R_inv @ self.al_classifier.Q
-                self.al_classifier.fc.weight = torch.nn.parameter.Parameter(
-                        F.normalize(torch.t(Delta.float()), p=2, dim=-1))
-
+            
     # SVD for calculating the W_c
     def get_projector_svd(self, raw_matrix, all_non_zeros=True):
         V, S, VT = torch.svd(raw_matrix)
